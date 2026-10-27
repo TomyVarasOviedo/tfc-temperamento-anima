@@ -1,0 +1,54 @@
+# Fase 1 — Constantes del espacio de rasgos.
+#
+# TODA cifra de este archivo tiene que tener su fuente citada al lado.
+# Los valores que siguen son PLACEHOLDERS de ejemplo para que el pipeline
+# corra end to end: Tomás los reemplaza con los del instrumento elegido.
+#
+# Pendiente de decisión (Fase 1): BFI-2 o IPIP-NEO-120.
+# Si se elige IPIP-NEO-120 y se quieren las 15 facetas, este archivo pasa
+# de 5 a 15 entradas y el resto del pipeline no cambia.
+
+instrument: "TODO — BFI-2 o IPIP-NEO-120"
+scale_note: "mu y sigma en puntaje promedio por ítem (1-5). Cambiar si el instrumento usa otra escala."
+
+traits:
+  - name: apertura
+    mu: 3.60            # fuente: TODO
+    sigma: 0.65         # fuente: TODO
+    reliability: 0.80   # test-retest, fuente: TODO
+    h2_snp: 0.093       # Schwaba et al. (2025), ReGPC — verificar por rasgo
+
+  - name: responsabilidad
+    mu: 3.55
+    sigma: 0.68
+    reliability: 0.82
+    h2_snp: 0.070
+
+  - name: extraversion
+    mu: 3.25
+    sigma: 0.75
+    reliability: 0.83
+    h2_snp: 0.080
+
+  - name: amabilidad
+    mu: 3.75
+    sigma: 0.60
+    reliability: 0.78
+    h2_snp: 0.055
+
+  - name: neuroticismo
+    mu: 2.95
+    sigma: 0.80
+    reliability: 0.81
+    h2_snp: 0.048
+
+# Matriz de correlación entre los cinco dominios, mismo orden que la lista.
+# Fuente: TODO — anclar en datos reales de fenotipo (Open-Source Psychometrics
+# o SAPA), que es el análogo de lo que VCTK representa para el módulo de voz.
+# Si no es definida positiva, TraitSpace.validate() lo detecta al cargar.
+correlation:
+  - [1.00,  0.15,  0.30,  0.10, -0.08]
+  - [0.15,  1.00,  0.20,  0.25, -0.25]
+  - [0.30,  0.20,  1.00,  0.15, -0.20]
+  - [0.10,  0.25,  0.15,  1.00, -0.18]
+  - [-0.08, -0.25, -0.20, -0.18, 1.00]

@@ -1,9 +1,15 @@
 [project]
 name = "tfc-anima-temperamento"
 version = "0.1.0"
-description = "Add your description here"
+description = "Modulo Temperamento del proyecto Anima: rasgos Big Five sobre una cohorte compartida"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=2.4.6",
+    "pytest>=9.2.0",
+    "pyyaml>=6.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

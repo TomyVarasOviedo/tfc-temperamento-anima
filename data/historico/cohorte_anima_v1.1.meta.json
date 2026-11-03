@@ -1,0 +1,52 @@
+{
+  "version": "1.1",
+  "semilla": 20261019,
+  "n": 2000,
+  "subpoblaciones_panel": {
+    "CEU": 99,
+    "GBR": 91,
+    "FIN": 99,
+    "IBS": 107,
+    "TSI": 107
+  },
+  "conteos_subpoblacion": {
+    "CEU": 394,
+    "GBR": 362,
+    "FIN": 394,
+    "IBS": 425,
+    "TSI": 425
+  },
+  "sexo_codificacion": {
+    "0": "mujer",
+    "1": "hombre"
+  },
+  "conteos_sexo": {
+    "0": 1000,
+    "1": 1000
+  },
+  "particiones": {
+    "entrenamiento": 0.5,
+    "calibracion": 0.25,
+    "prueba": 0.25
+  },
+  "conteos_particion": {
+    "entrenamiento": 1000,
+    "calibracion": 500,
+    "prueba": 500
+  },
+  "estratificacion": "subpoblacion x sexo",
+  "rango_edad": [
+    18,
+    80
+  ],
+  "distribucion_edad": "uniforme entera",
+  "numpy_version": "2.5.3",
+  "python_version": "3.13.16",
+  "supuestos_de_diseno": [
+    "La edad no existe en 1000 Genomes: se genera uniforme entre 18 y 80. Es un supuesto de diseño común a los tres módulos, no un dato.",
+    "El efecto de edad, sexo y ancestría sobre cada fenotipo lo define cada módulo y debe documentarse como supuesto.",
+    "De 1000 Genomes solo se toman las proporciones de las cinco subpoblaciones europeas; la cohorte no contiene genotipos.",
+    "Sexo balanceado (1000/1000) por diseño; las poblaciones fuente no están necesariamente balanceadas."
+  ],
+  "sha256_csv": "0f9567c40d0de225cff78c2c9542812a0275c746def452415761eeb0fb19de33"
+}

@@ -2,9 +2,12 @@
 __pycache__/
 *.py[oc]
 build/
-dist/
 wheels/
 *.egg-info
+
+# Tests y artefactos generados
+.pytest_cache/
+outputs/
 
 # Virtual environments
 .venv

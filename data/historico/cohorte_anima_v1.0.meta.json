@@ -1,0 +1,25 @@
+{
+  "version": "1.0",
+  "semilla": 20261019,
+  "n": 2000,
+  "subpoblaciones": {
+    "CEU": 99,
+    "GBR": 91,
+    "FIN": 99,
+    "IBS": 107,
+    "TSI": 107
+  },
+  "particiones": {
+    "entrenamiento": 0.5,
+    "calibracion": 0.25,
+    "prueba": 0.25
+  },
+  "rango_edad": [
+    18,
+    80
+  ],
+  "supuestos_de_diseno": [
+    "La edad no existe en 1000 Genomes: se genera uniforme en el rango declarado. Es un supuesto de diseño, no un dato.",
+    "El efecto de edad, sexo y ancestría sobre cada fenotipo lo define cada módulo y debe documentarse como supuesto."
+  ]
+}

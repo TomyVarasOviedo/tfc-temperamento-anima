@@ -1,0 +1,78 @@
+{
+  "version": "2.0",
+  "semilla": 20261019,
+  "n": 2000,
+  "subpoblaciones_panel": {
+    "CEU": 99,
+    "GBR": 91,
+    "FIN": 99,
+    "IBS": 107,
+    "TSI": 107
+  },
+  "conteos_subpoblacion": {
+    "CEU": 394,
+    "GBR": 362,
+    "FIN": 394,
+    "IBS": 425,
+    "TSI": 425
+  },
+  "sexo_codificacion": {
+    "0": "mujer",
+    "1": "hombre"
+  },
+  "conteos_sexo": {
+    "0": 1000,
+    "1": 1000
+  },
+  "particiones": {
+    "entrenamiento": 0.5,
+    "calibracion": 0.25,
+    "prueba": 0.25
+  },
+  "conteos_particion": {
+    "entrenamiento": 1000,
+    "calibracion": 500,
+    "prueba": 500
+  },
+  "estratificacion": "subpoblacion x sexo x origen",
+  "origenes": [
+    "1000g",
+    "simulada"
+  ],
+  "conteos_origen": {
+    "1000g": 503,
+    "simulada": 1497
+  },
+  "conteos_origen_particion": {
+    "1000g": {
+      "entrenamiento": 253,
+      "calibracion": 125,
+      "prueba": 125
+    },
+    "simulada": {
+      "entrenamiento": 747,
+      "calibracion": 375,
+      "prueba": 375
+    }
+  },
+  "panel_1000g": {
+    "fuente": "1000 Genomes fase 3, integrated_call_samples_v3.20130502.ALL.panel",
+    "personas": 503,
+    "sha256_listado": "3f4bc524633cddf728f660c8aa2bf567384c9f84b9b67d60457f05ab8246c855"
+  },
+  "rango_edad": [
+    18,
+    80
+  ],
+  "distribucion_edad": "uniforme entera",
+  "numpy_version": "2.5.3",
+  "python_version": "3.13.16",
+  "supuestos_de_diseno": [
+    "La edad no existe en 1000 Genomes: se genera uniforme entre 18 y 80. Es un supuesto de diseño común a los tres módulos, no un dato.",
+    "El efecto de edad, sexo y ancestría sobre cada fenotipo lo define cada módulo y debe documentarse como supuesto.",
+    "La cohorte es mixta: las 503 personas europeas de 1000 Genomes son reales en subpoblación, sexo y genoma; el resto son simuladas, con los mismos totales por subpoblación que la versión 1.1.",
+    "Los rasgos de todas las personas, reales o simuladas, son simulados: 1000 Genomes no informa voz, cara ni personalidad.",
+    "Sexo balanceado dentro de cada subpoblación contando a las personas reales; las simuladas completan lo que falta."
+  ],
+  "sha256_csv": "8203824aff641fb8a7e54a09d902a887407c81f70b000846b37b9f296609abb6"
+}

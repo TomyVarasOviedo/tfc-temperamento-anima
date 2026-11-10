@@ -5,7 +5,7 @@ lo corren igual. No reemplaza los tests propios de cada módulo: verifica
 que lo que cada uno entrega sea comparable con lo de los otros dos.
 
 Uso, desde la raíz del repo:
-    pytest tests/test_contrato_compartido.py -q
+    pytest tests/anima_spine/test_contrato_compartido.py -q
 
 Un módulo que todavía no exportó su CSV sale como "skipped", no como
 error: así cada uno puede correrlo desde el primer día sin esperar a los
@@ -21,7 +21,7 @@ import pytest
 
 from anima_spine import predictions, spine
 
-RAIZ = Path(__file__).resolve().parent.parent
+RAIZ = Path(__file__).resolve().parents[2]
 COHORTE = RAIZ / "data" / "cohorte_anima.csv"
 OUTPUTS = RAIZ / "outputs"
 TOLERANCIA = 0.05  # los ±5 pp de la idea directriz

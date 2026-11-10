@@ -10,9 +10,10 @@ El repositorio tiene dos componentes:
 - `anima_spine/`: la **columna vertebral compartida**. Define la cohorte de
   individuos, el formato de predicciones/intervalos/barridos y las
   comparaciones con bootstrap pareado. No contiene rasgos de ningún dominio.
-- `temperamento/`: el **módulo propio**. Espacio de rasgos Big Five, cohorte
-  sintética, modelo heterocedástico, calibración conformal y reconstrucción
-  individual.
+- `temperamento/`: el **módulo propio**. Parámetros, matrices de covarianza,
+  simulación del genotipo/fenotipo y modelos predictivos de los cinco rasgos
+  Big Five. El código de la etapa anterior (heterocedástica y conformal) se
+  conserva sin uso en `temperamento/legacy/`.
 
 Los datos de entrada viven en `data/`, los artefactos que generan los
 scripts en `outputs/`, y las versiones entregables del spine en `dist/`.
@@ -21,23 +22,28 @@ scripts en `outputs/`, y las versiones entregables del spine en `dist/`.
 
 ```
 .
-├── anima_spine/          # columna vertebral compartida
+├── anima_spine/          # columna vertebral compartida (v2.2)
 │   ├── spine.py          # cohorte, particiones y verificación
-│   ├── predictions.py    # contrato de predicciones, intervalos y barridos
-│   ├── compare.py        # bootstrap pareado entre dominios
+│   ├── predictions.py    # contrato, recuperación y verificación
+│   ├── compare.py        # ΔR² total/parcial y bootstrap pareado
+│   ├── power_gradiente.py
 │   └── datos/            # panel real de 1000 Genomes
 ├── temperamento/         # módulo de rasgos Big Five
-│   ├── contract.py       # contrato común de salida (TraitResult)
-│   ├── traits/           # espacio de rasgos y constantes
-│   ├── cohort/           # generador de cohorte sintética
-│   ├── models/           # modelo heterocedástico
-│   ├── calibration/      # calibración conformal
-│   └── reconstruct.py    # reconstrucción individual
+│   ├── parametros.py     # parámetros y fuentes
+│   ├── matrices.py       # matrices de covarianza
+│   ├── simulacion.py     # genotipo y fenotipo simulados
+│   ├── modelos.py        # modelos predictivos y líneas base
+│   └── legacy/           # código archivado de la etapa anterior
 ├── data/                 # cohorte publicada e históricos
-├── outputs/              # predicciones, intervalos y barridos (generado)
-├── tests/                # tests del spine y del contrato compartido
+├── outputs/              # artefactos generados por la demo (ignorado)
+├── tests/
+│   ├── anima_spine/      # spine, contrato y recuperación
+│   └── temperamento/     # parámetros, matrices, modelos y simulación
+├── docs/                 # minutas y notas de sesión
 ├── examples/             # demo del circuito completo
-└── dist/                 # versiones entregables del spine
+├── dist/                 # versiones entregables del spine
+├── CONTRACT.md           # contrato de la capa de calibración
+└── MODEL.md              # especificación del módulo Temperamento
 ```
 
 ## Requisitos
@@ -103,10 +109,10 @@ En `cmd.exe`, reemplazar la activación por:
 - `outputs/intervalos_<dominio>.csv`: intervalos calibrados en los seis
   niveles nominales.
 - `outputs/barrido_<dominio>.csv`: cobertura por réplica y nivel.
+- `outputs/recuperacion_<dominio>.csv`: ΔR² total y parcial por réplica,
+  rasgo y línea base, con el nivel declarado.
 
-La demo escribe estos archivos en `outputs/`. Los tests omiten los dominios
-que todavía no exportaron sus resultados.
-
-> Si se corre la demo antes que los tests, `test_reporta_las_dos_lineas_base`
-> falla para los tres dominios: la demo exporta una sola línea base a
-> propósito. Es el test funcionando, no un error.
+La demo lee `data/cohorte_anima.csv` y escribe los cuatro archivos en
+`outputs/` para los tres dominios simulados, contra las dos líneas base.
+`outputs/` está ignorado por git: se regenera con la demo. Los tests omiten
+los dominios que todavía no exportaron sus resultados.

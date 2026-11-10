@@ -33,6 +33,91 @@ Cada módulo sigue siendo dueño de todo lo suyo:
 Lo único que cambia en cada módulo es de dónde salen los individuos: en vez
 de generarlos, los lee.
 
+## Versión 2.2 (9/11/2026): la tolerancia del criterio de recuperación
+
+La nota de Rostro del 9/11/2026 encontró que el ΔR² parcial calculado contra
+"ancestria sexo edad" sale sistemáticamente POR ENCIMA del nivel declarado, y
+que con la tolerancia de 0,005 el margen quedaba justo. Lo verifiqué por
+simulación y la causa está clara: la línea base no se conoce, se estima sobre
+`entrenamiento` y se evalúa fuera de muestra. Estimar sus k coeficientes sobre
+n personas cuesta alrededor de k/n en R² fuera de muestra, y ese costo queda
+solo en el denominador de la línea base.
+
+Corrimiento medido sobre el promedio de 20 réplicas, con k = 6 y n = 1.000:
+
+| Línea base | Dominios | Corrimiento del parcial |
+| --- | --- | --- |
+| Efecto real cero | Facial, temperamental | +0,0045 a +0,0065 |
+| Efecto real distinto de cero | Vocal | +0,0064 a +0,0087 |
+
+El percentil 95 del desvío absoluto es 0,0091. Cambios:
+
+- **`TOLERANCIA_RECUPERACION` pasa de 0,005 a 0,015.** Absorbe el corrimiento y
+  su ruido, y sigue pudiendo fallar: un error en la línea base, en el bootstrap
+  o en el generador se aparta mucho más que 1,5 puntos.
+- **El criterio se evalúa sobre el caso base.** El segundo nivel declarado se
+  informa con su intervalo y sin criterio de recuperación: con 500 personas de
+  prueba un nivel del orden del 0,15 % no se distingue de cero, y una
+  tolerancia absoluta de 0,015 sería diez veces el nivel que pretende verificar.
+- **El corrimiento se declara, no se corrige.** Es una propiedad de estimar la
+  línea base, no del circuito del genotipo, y recortar el R² negativo de la
+  línea base sería maquillar el dato.
+- **`ContratoError`, subclase de `ValueError`, se define en el paquete.** Así la
+  capa de calibración y los validadores levantan el mismo tipo y un módulo
+  puede capturar uno solo.
+- **El comentario de `CAMPOS` que decía `"PC3"` ahora dice `"pc01"`**, y aclara
+  que el contrato no fija el formato del nombre del rasgo.
+
+La cohorte 2.0 y su huella no cambian con esta versión. El lugar de
+`calibracion.py` queda reservado para la 2.3.
+
+## Versión 2.1 (5/11/2026): la hipótesis reformulada
+
+El 3/11/2026 el tutor aprobó la reformulación de la hipótesis (sección 6.8 del
+documento integrado). Lo que cambia en el paquete:
+
+**El ΔR² se calcula en sus dos formas.** `compare.delta_r2` devuelve el total y
+el parcial:
+
+    parcial = (R² completo - R² base) / (1 - R² base)
+
+Los dos coinciden cuando la línea base no explica nada. En el dominio vocal el
+sexo explica hasta el 74 % de algunos parámetros, y ahí el total queda
+comprimido por el factor (1 - R² base) aunque la heredabilidad sea la misma.
+Como las tres fuentes estiman sus heredabilidades netas de covariables, el
+parcial es la medida comparable con el nivel declarado, y es la que usan los
+criterios. El total se informa al lado.
+
+**Ningún contraste entre dominios se afirma.** `comparar` ya no devuelve
+`hipotesis_dos_niveles`: devuelve `ordenamiento` y los tres pares con rol
+"informado". El código que leía esa clave va a fallar con KeyError, y está
+bien que falle: el veredicto de la hipótesis ya no sale de ahí.
+
+**Criterio nuevo: recuperación del nivel declarado.** Es la condición que la
+hipótesis puede fallar. El ΔR² parcial recuperado tiene que quedar dentro de
+`TOLERANCIA_RECUPERACION` (0,005) del nivel declarado, evaluado sobre el
+promedio de las 20 réplicas. La tolerancia se fijó por simulación, con las
+personas de prueba fijas entre réplicas y los fenotipos regenerados: el
+desvío absoluto queda por debajo de 0,0043 en el 95 % de los experimentos.
+Sobre una réplica individual la dispersión es cuatro veces mayor, hasta 0,016,
+así que el criterio solo tiene sentido sobre el promedio. La corrida de
+`demo_circuito.py` lo muestra: en el dominio vocal la réplica 0 da un parcial
+de 0,057 y el promedio de las 20 da 0,035, que es el nivel declarado.
+
+**Archivo nuevo del contrato: `recuperacion_<dominio>.csv`.** Una fila por
+réplica, rasgo y línea base, con el nivel declarado del rasgo y el ΔR² total y
+parcial de esa réplica. El nivel declarado sale de la configuración del módulo
+y `verificar_recuperacion` rechaza un archivo donde cambie entre réplicas: si
+cambia, se eligió mirando resultados. Funciones: `fila_recuperacion`,
+`exportar_recuperacion`, `cargar_recuperacion`, `verificar_recuperacion` y
+`criterio_recuperacion`.
+
+**`predictions.verificar` ahora exige las dos líneas base.** Antes aceptaba un
+archivo con una sola, y no debía: parte de la diferencia de ΔR² entre dominios
+vendría de que cada módulo comparó contra otra cosa.
+
+La cohorte 2.0 y su huella no cambian con esta versión.
+
 ## Versión 2.0 (1/11/2026): cohorte mixta
 
 Decidida por el grupo el 1/11/2026. Es la cohorte base del trabajo, sin vuelta

@@ -35,7 +35,8 @@ DOMINIOS = ("rostro", "voz", "temperamento")
 CAMPOS = (
     "individuo_id",   # debe existir en cohorte_anima.csv, partición prueba
     "dominio",        # uno de DOMINIOS
-    "rasgo",          # "PC3", "F0", "neuroticismo", ...
+    "rasgo",          # "pc01", "f0_medio", "neuroticismo", ... (cada módulo
+                      # usa sus propios nombres: el contrato no fija el formato)
     "y_real",         # fenotipo observado
     "mu",             # media predictiva del modelo completo
     "sigma",          # desvío predictivo del modelo completo
@@ -114,6 +115,15 @@ def verificar(filas: list[dict], ids_prueba: set[int], dominio: str) -> None:
     lb = {f["linea_base"] for f in filas}
     if lb - set(LINEAS_BASE):
         raise AssertionError(f"{dominio}: líneas base no declaradas: {lb - set(LINEAS_BASE)}")
+    # Las dos son obligatorias: si un módulo informa contra una sola, parte de
+    # la diferencia de ΔR² entre dominios viene de que cada uno comparó contra
+    # otra cosa. Antes de la versión 2.1 esto se aceptaba y no debía.
+    faltan = set(LINEAS_BASE) - lb
+    if faltan:
+        raise AssertionError(
+            f"{dominio}: falta exportar contra la línea base {sorted(faltan)}. "
+            f"Los tres módulos reportan contra las dos de LINEAS_BASE."
+        )
 
     for f in filas:
         for k in _NUMERICOS:
@@ -424,4 +434,215 @@ def cobertura_promedio(barrido: list[dict]) -> dict[str, dict[float, float]]:
     return {
         rasgo: {nivel: float(np.mean(v)) for nivel, v in sorted(niveles.items())}
         for rasgo, niveles in acum.items()
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recuperación del nivel declarado (criterio de la hipótesis reformulada)
+#
+# El 3/11/2026 el tutor aprobó la reformulación de la hipótesis: lo que el
+# trabajo afirma por dominio es que el modelo recupera el nivel de señal
+# genética DECLARADO, no un ordenamiento entre dominios. La condición que
+# puede fallar es que el ΔR² parcial recuperado quede dentro de TOLERANCIA
+# del nivel declarado, evaluado sobre el promedio del barrido de REPLICAS.
+#
+# La tolerancia se fijó por simulación en dos pasos.
+#
+# Primero, con la línea base tomada como conocida: el desvío absoluto respecto
+# del nivel declarado se mantiene por debajo de 0,0043 en el 95 % de los
+# experimentos, y sobre una réplica individual la dispersión es cuatro veces
+# mayor (hasta 0,016). De ahí que el criterio SOLO tenga sentido sobre el
+# promedio del barrido.
+#
+# Segundo, y es la corrección del 9/11/2026 que trajo la nota de Rostro: la
+# línea base no se conoce, se ESTIMA sobre `entrenamiento` y se evalúa fuera de
+# muestra. Estimar sus k coeficientes sobre n personas cuesta alrededor de k/n
+# en R² fuera de muestra (con k = 6 y n = 1.000, unos -0,009 cuando el efecto
+# real es cero), y ese costo queda solo en el denominador de la línea base, de
+# modo que el parcial sale SISTEMÁTICAMENTE POR ENCIMA del nivel declarado.
+# Medido por simulación sobre el promedio de 20 réplicas, el corrimiento es de
+# +0,0045 a +0,0065 con línea base de efecto nulo (dominios facial y
+# temperamental) y de +0,0064 a +0,0087 con línea base de efecto real (dominio
+# vocal), con un percentil 95 del desvío absoluto de 0,0091.
+#
+# La tolerancia de 0,015 absorbe ese corrimiento y su ruido, y sigue pudiendo
+# fallar: un error en la línea base, en el bootstrap o en el generador se
+# aparta mucho más que 1,5 puntos. El corrimiento se declara en lugar de
+# corregirse, porque es una propiedad de estimar la línea base y no del
+# circuito del genotipo.
+#
+# El criterio se evalúa sobre el CASO BASE. El segundo nivel declarado se
+# informa con su intervalo y sin criterio de recuperación: con 500 personas de
+# prueba, un nivel del orden del 0,15 % no se distingue de cero, y una
+# tolerancia absoluta de 0,015 sería diez veces el nivel que pretende verificar.
+#
+# El ΔR² por réplica no viaja en barrido_<dominio>.csv, que es por nivel
+# nominal y no por línea base. Va en su propio archivo.
+
+TOLERANCIA_RECUPERACION = 0.015
+
+
+class ContratoError(ValueError):
+    """Incumplimiento del contrato de archivos entre módulos.
+
+    Definida acá para que la capa de calibración y los validadores del paquete
+    levanten el mismo tipo y un módulo pueda capturar uno solo. Subclase de
+    ValueError, así el código que ya capturaba ValueError sigue funcionando.
+    """
+
+CAMPOS_RECUPERACION = (
+    "replica",            # 0 a REPLICAS - 1
+    "semilla",            # la de la réplica
+    "dominio",            # uno de DOMINIOS
+    "rasgo",              # el mismo nombre que en CAMPOS
+    "linea_base",         # uno de LINEAS_BASE
+    "nivel_declarado",    # la señal declarada del rasgo, de la configuración
+    "delta_r2_total",     # sobre la varianza total
+    "delta_r2_parcial",   # sobre lo que la línea base no explica
+)
+
+
+def fila_recuperacion(
+    replica: int, semilla: int, dominio: str, rasgo: str, linea_base: str,
+    nivel_declarado: float, delta_r2_total: float, delta_r2_parcial: float,
+) -> dict:
+    """Arma una fila de recuperación. El nivel declarado sale de la configuración
+    del módulo, nunca de un resultado observado."""
+    if dominio not in DOMINIOS:
+        raise ValueError(f"dominio debe ser uno de {DOMINIOS}, no {dominio!r}")
+    if linea_base not in LINEAS_BASE:
+        raise ValueError(f"linea_base debe ser una de {LINEAS_BASE}, no {linea_base!r}")
+    return {
+        "replica": int(replica), "semilla": int(semilla), "dominio": dominio,
+        "rasgo": rasgo, "linea_base": linea_base,
+        "nivel_declarado": float(nivel_declarado),
+        "delta_r2_total": float(delta_r2_total),
+        "delta_r2_parcial": float(delta_r2_parcial),
+    }
+
+
+def exportar_recuperacion(filas: list[dict], dominio: str, directorio: str | Path = ".") -> Path:
+    """Escribe recuperacion_<dominio>.csv (campos de CAMPOS_RECUPERACION)."""
+    if dominio not in DOMINIOS:
+        raise ValueError(f"dominio debe ser uno de {DOMINIOS}, no {dominio!r}")
+    directorio = Path(directorio)
+    directorio.mkdir(parents=True, exist_ok=True)
+    ruta = directorio / f"recuperacion_{dominio}.csv"
+    with ruta.open("w", newline="", encoding="utf-8") as fh:
+        escritor = csv.DictWriter(fh, fieldnames=CAMPOS_RECUPERACION)
+        escritor.writeheader()
+        escritor.writerows(filas)
+    return ruta
+
+
+def cargar_recuperacion(ruta: str | Path) -> list[dict]:
+    """Lee recuperacion_<dominio>.csv con los tipos correctos."""
+    enteros = ("replica", "semilla")
+    flotantes = ("nivel_declarado", "delta_r2_total", "delta_r2_parcial")
+    filas = []
+    with Path(ruta).open(newline="", encoding="utf-8") as fh:
+        for f in csv.DictReader(fh):
+            if set(f) != set(CAMPOS_RECUPERACION):
+                raise AssertionError(
+                    f"{ruta}: columnas {sorted(f)}, se esperaban "
+                    f"{sorted(CAMPOS_RECUPERACION)}"
+                )
+            filas.append({
+                **{k: int(f[k]) for k in enteros},
+                **{k: float(f[k]) for k in flotantes},
+                "dominio": f["dominio"], "rasgo": f["rasgo"],
+                "linea_base": f["linea_base"],
+            })
+    return filas
+
+
+def verificar_recuperacion(filas: list[dict], dominio: str) -> None:
+    """Valida recuperacion_<dominio>.csv antes de evaluar el criterio."""
+    if not filas:
+        raise AssertionError(f"{dominio}: el archivo de recuperación está vacío")
+    malos = {f["dominio"] for f in filas} - {dominio}
+    if malos:
+        raise AssertionError(f"{dominio}: hay filas con dominio {malos}")
+    lb = {f["linea_base"] for f in filas}
+    faltan = set(LINEAS_BASE) - lb
+    if faltan:
+        raise AssertionError(f"{dominio}: falta la línea base {sorted(faltan)}")
+    replicas = {f["replica"] for f in filas}
+    if replicas != set(range(REPLICAS)):
+        raise AssertionError(
+            f"{dominio}: se esperaban las réplicas 0 a {REPLICAS - 1}, hay "
+            f"{len(replicas)}"
+        )
+    for f in filas:
+        for k in ("nivel_declarado", "delta_r2_total", "delta_r2_parcial"):
+            if not math.isfinite(f[k]):
+                raise AssertionError(f"{dominio}: {k} no es finito en la réplica {f['replica']}")
+        if f["nivel_declarado"] < 0:
+            raise AssertionError(f"{dominio}: nivel_declarado negativo en {f['rasgo']}")
+    # Un rasgo tiene que declarar el mismo nivel en las 20 réplicas: si cambia,
+    # el nivel se eligió mirando resultados.
+    por_rasgo: dict[tuple[str, str], set[float]] = {}
+    for f in filas:
+        por_rasgo.setdefault((f["rasgo"], f["linea_base"]), set()).add(
+            round(f["nivel_declarado"], 10)
+        )
+    movidos = {k: v for k, v in por_rasgo.items() if len(v) > 1}
+    if movidos:
+        raise AssertionError(
+            f"{dominio}: el nivel declarado cambia entre réplicas en "
+            f"{sorted(k[0] for k in movidos)}. Tiene que salir de la "
+            "configuración y ser el mismo en las 20."
+        )
+    vistos = {(f["replica"], f["rasgo"], f["linea_base"]) for f in filas}
+    if len(vistos) != len(filas):
+        raise AssertionError(f"{dominio}: hay filas duplicadas por (réplica, rasgo, línea base)")
+
+
+def criterio_recuperacion(
+    filas: list[dict],
+    linea_base: str = "ancestria sexo edad",
+    tolerancia: float = TOLERANCIA_RECUPERACION,
+) -> dict:
+    """Evalúa el criterio de recuperación sobre el promedio del barrido.
+
+    Promedia el ΔR² parcial de cada rasgo sobre las REPLICAS réplicas, lo
+    compara con el nivel declarado de ese rasgo, y agrega por dominio
+    promediando los rasgos. El criterio se cumple si el desvío absoluto del
+    agregado queda dentro de `tolerancia`.
+
+    Devuelve también el desvío por rasgo: si el agregado pasa pero un rasgo
+    se aparta mucho, conviene verlo antes de informar.
+    """
+    sel = [f for f in filas if f["linea_base"] == linea_base]
+    if not sel:
+        raise ValueError(f"no hay filas para la línea base {linea_base!r}")
+    acum: dict[str, dict[str, list[float]]] = {}
+    declarado: dict[str, float] = {}
+    for f in sel:
+        acum.setdefault(f["rasgo"], {}).setdefault("parcial", []).append(f["delta_r2_parcial"])
+        acum[f["rasgo"]].setdefault("total", []).append(f["delta_r2_total"])
+        declarado[f["rasgo"]] = f["nivel_declarado"]
+    por_rasgo = {
+        rasgo: {
+            "nivel_declarado": declarado[rasgo],
+            "parcial_promedio": float(np.mean(v["parcial"])),
+            "total_promedio": float(np.mean(v["total"])),
+            "desvio": float(np.mean(v["parcial"]) - declarado[rasgo]),
+            "replicas": len(v["parcial"]),
+        }
+        for rasgo, v in sorted(acum.items())
+    }
+    recuperado = float(np.mean([v["parcial_promedio"] for v in por_rasgo.values()]))
+    nivel = float(np.mean([v["nivel_declarado"] for v in por_rasgo.values()]))
+    desvio = recuperado - nivel
+    return {
+        "linea_base": linea_base,
+        "tolerancia": float(tolerancia),
+        "nivel_declarado": nivel,
+        "parcial_recuperado": recuperado,
+        "total_recuperado": float(np.mean([v["total_promedio"] for v in por_rasgo.values()])),
+        "desvio": desvio,
+        "cumple": bool(abs(desvio) <= tolerancia),
+        "peor_rasgo": max(por_rasgo, key=lambda r: abs(por_rasgo[r]["desvio"])),
+        "por_rasgo": por_rasgo,
     }

@@ -4,8 +4,10 @@ No es parte del entregable: sirve para verificar que la columna vertebral,
 el formato de predicciones y el bootstrap pareado funcionan juntos antes
 de que los tres módulos reales se enganchen.
 
-Simula el gradiente esperado: rostro con algo de señal, voz con menos,
-temperamento con nada.
+Simula tres dominios con niveles de señal declarados distintos, exporta los
+cuatro archivos del contrato (predicciones, intervalos, barrido y
+recuperación) contra las DOS líneas base, y evalúa el criterio de
+recuperación del nivel declarado junto con el contraste entre dominios.
 """
 
 from __future__ import annotations
@@ -16,15 +18,20 @@ from statistics import NormalDist
 
 import numpy as np
 
-RAIZ = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(RAIZ))
+RAIZ = Path(__file__).resolve().parents[1]
+if str(RAIZ) not in sys.path:
+    sys.path.insert(0, str(RAIZ))
 
 from anima_spine import compare, predictions, spine
 
 COHORTE = RAIZ / "data" / "cohorte_anima.csv"
 OUTPUTS = RAIZ / "outputs"
 
-H2_SIMULADO = {"rostro": 0.060, "voz": 0.035, "temperamento": 0.000}
+# Nivel de señal declarado por dominio, y cuánto explica la línea base de
+# ancestría, sexo y edad. En el dominio vocal la línea base explica mucho
+# (el sexo), y es ahí donde el ΔR² total y el parcial se separan.
+H2_SIMULADO = {"rostro": 0.060, "voz": 0.035, "temperamento": 0.010}
+R2_BASE = {"rostro": 0.02, "voz": 0.55, "temperamento": 0.0}
 RASGOS = {
     "rostro": ["PC1", "PC2", "PC3"],
     "voz": ["F0", "F1", "F2"],
@@ -33,35 +40,63 @@ RASGOS = {
 
 
 def modulo_simulado(dominio, ids, h2, seed):
-    """Lo que haría un módulo real: generar, ajustar, exportar."""
+    """Lo que haría un módulo real: generar, ajustar y exportar contra las dos líneas base."""
     rng = np.random.default_rng(seed)
     n = len(ids)
+    r2b = R2_BASE[dominio]
     filas = []
 
     for rasgo in RASGOS[dominio]:
-        g = rng.standard_normal(n) * np.sqrt(h2)
-        y = g + rng.standard_normal(n) * np.sqrt(1 - h2)
+        # y = covariables + genotipo + ruido, con var(g) = h2 * (1 - R2 base),
+        # de modo que el ΔR² parcial contra "ancestria sexo edad" da h2.
+        cov = rng.standard_normal(n) * np.sqrt(r2b)
+        g = rng.standard_normal(n) * np.sqrt(h2 * (1 - r2b))
+        y = cov + g + rng.standard_normal(n) * np.sqrt((1 - h2) * (1 - r2b))
 
-        mu, sigma = g, np.sqrt(1 - h2)
-        mu_base, sigma_base = np.full(n, y.mean()), y.std(ddof=1)
+        mu, sigma = cov + g, np.sqrt((1 - h2) * (1 - r2b))
         z = NormalDist().inv_cdf(0.95)  # intervalo nominal del 90 %
+        bases = {
+            "solo intercepto": (np.full(n, y.mean()), y.std(ddof=1)),
+            "ancestria sexo edad": (cov, float(np.std(y - cov, ddof=1))),
+        }
 
-        filas += [
-            {
-                "individuo_id": int(i),
-                "dominio": dominio,
-                "rasgo": rasgo,
-                "y_real": float(yi),
-                "mu": float(m),
-                "sigma": float(sigma),
-                "lo": float(m - z * sigma),
-                "hi": float(m + z * sigma),
-                "mu_base": float(mb),
-                "sigma_base": float(sigma_base),
-                "linea_base": "solo intercepto",
-            }
-            for i, yi, m, mb in zip(ids, y, mu, mu_base)
-        ]
+        for linea_base, (mu_base, sigma_base) in bases.items():
+            filas += [
+                {
+                    "individuo_id": int(i),
+                    "dominio": dominio,
+                    "rasgo": rasgo,
+                    "y_real": float(yi),
+                    "mu": float(m),
+                    "sigma": float(sigma),
+                    "lo": float(m - z * sigma),
+                    "hi": float(m + z * sigma),
+                    "mu_base": float(mb),
+                    "sigma_base": float(sigma_base),
+                    "linea_base": linea_base,
+                }
+                for i, yi, m, mb in zip(ids, y, mu, np.asarray(mu_base, dtype=float))
+            ]
+    return filas
+
+
+def recuperacion_simulada(dominio, ids, h2, semilla_principal):
+    """El ΔR² de cada réplica contra su nivel declarado: lo que evalúa el criterio."""
+    filas = []
+    for r in range(predictions.REPLICAS):
+        semilla = semilla_principal if r == 0 else 10_000 * (semilla_principal + 1) + r
+        pred = modulo_simulado(dominio, ids, h2, seed=semilla)
+        for rasgo in RASGOS[dominio]:
+            for linea_base in predictions.LINEAS_BASE:
+                sel = [f for f in pred if f["rasgo"] == rasgo and f["linea_base"] == linea_base]
+                y = np.array([f["y_real"] for f in sel])
+                total, parcial = compare.delta_r2(
+                    y,
+                    np.array([f["mu"] for f in sel]),
+                    np.array([f["mu_base"] for f in sel]),
+                )
+                filas.append(predictions.fila_recuperacion(
+                    r, semilla, dominio, rasgo, linea_base, h2, total, parcial))
     return filas
 
 
@@ -118,6 +153,7 @@ def main():
           f"{len(ids_prueba)} en prueba\n")
 
     preds = {}
+    recuperaciones = {}
     for i, (dominio, h2) in enumerate(H2_SIMULADO.items()):
         filas = modulo_simulado(dominio, ids_prueba, h2, seed=i)
         predictions.verificar(filas, set(ids_prueba), dominio)
@@ -129,11 +165,28 @@ def main():
         barrido = barrido_simulado(dominio, ids_prueba, h2, semilla_principal=i)
         predictions.verificar_barrido(barrido, intervalos, filas, set(ids_prueba), dominio)
         predictions.exportar_barrido(barrido, dominio, directorio=OUTPUTS)
+        rec = recuperacion_simulada(dominio, ids_prueba, h2, semilla_principal=i)
+        predictions.verificar_recuperacion(rec, dominio)
+        predictions.exportar_recuperacion(rec, dominio, directorio=OUTPUTS)
+        recuperaciones[dominio] = rec
         print(f"  {dominio:>14}: {len(filas)} filas -> {ruta.name}  [ok]")
 
     print()
     resultado = compare.comparar(preds, RASGOS, n_boot=1000, seed=0)
     compare.imprimir(resultado)
+
+    print("\nCriterio de recuperación del nivel declarado "
+          f"(tolerancia {predictions.TOLERANCIA_RECUPERACION})")
+    print(f"{'dominio':>14}  {'declarado':>10}  {'recuperado':>11}  {'desvío':>8}  {'cumple':>7}")
+    print("-" * 58)
+    todos = True
+    for dominio, rec in recuperaciones.items():
+        c = predictions.criterio_recuperacion(rec)
+        todos = todos and c["cumple"]
+        print(f"{dominio:>14}  {c['nivel_declarado']:>10.4f}  "
+              f"{c['parcial_recuperado']:>11.4f}  {c['desvio']:>+8.4f}  "
+              f"{'sí' if c['cumple'] else 'no':>7}")
+    print(f"\nLos tres dominios recuperan su nivel declarado: {'sí' if todos else 'NO'}")
 
 
 if __name__ == "__main__":

@@ -2,16 +2,31 @@
 
 Guía para agentes de codificación que construyen o modifican `anima_spine/calibracion.py`.
 
-- **Fuente de verdad:** «Anima: capa de calibración conformal · Requisitos y contrato · v5 · CONGELADO» (`Anima_capa_de_calibracion_contrato_v5_congelado.md`, 10/11/2026). Este archivo es su versión operativa. Si los dos no coinciden, manda el v5: detenete y avisá.
+- **Fuente de verdad:** «Anima: capa de calibración conformal · Requisitos y contrato · v5.1 · CONGELADO» (`Anima_capa_de_calibracion_contrato_v5.1_congelado.md`, 12/11/2026). Este archivo es su versión operativa. Si los dos no coinciden, manda el v5.1: detenete y avisá.
 - **Responsable de la capa:** Tomás.
 - **Modelo de Temperamento:** está especificado en [`./MODEL.md`](./MODEL.md) (ver sección 12).
+
+---
+
+## 0. Cambios v5.1 (aprobados por los tres el 12/11/2026)
+
+Ya están incorporados en el documento v5.1 y en el resto de este archivo.
+
+| Tema | v5 | v5.1 | Motivo y origen |
+| --- | --- | --- | --- |
+| RF6, `control_permutacion` | `pasa` por rasgo × nivel, con ventana [0,95; 1,05] | `pasa` sobre el **cociente medio por nivel** (6 banderas, no 48): el promedio simple de los cocientes de los rasgos del nivel (en Rostro, de las componentes). `por_rasgo` se sigue informando completa, sin bandera. Ver sección 7.6 | Simulación de Diego: con la bandera por celda, las 48 celdas de Voz pasan todas juntas solo el 61 % de las veces con un modelo correcto. Aprobado el 12/11 |
+| Paquete de base | 2.2 | 2.2 o 2.2.1. La 2.2.1 solo corrige `power_gradiente.py` y no toca nada que use la capa | Diego |
+| Importación de `ContratoError` | `from anima_spine import ContratoError` | `from anima_spine.predictions import ContratoError`, porque el `__init__.py` de la 2.2 todavía no la exporta. Es la misma clase | Aviso de Audrey |
+| Tipo de entrada | Implícito | Si la tabla no es un `pandas.DataFrame`, la capa levanta `ContratoError`. La conversión, por ejemplo desde un dict de arreglos, la hace cada módulo | Nota de Audrey |
+| CRPS | «Es la que usa la condición de la hipótesis» | Diagnóstico **sin umbral**, que **no forma parte de la condición de la hipótesis**. Ver sección 7.5 | Decisión del grupo del 12/11/2026, tomada antes de que la capa calcule ningún CRPS |
+| Control de permutación en el módulo | Sin aclarar | A la capa no le importa cómo se permuta: solo exige una tabla con el mismo contrato. Permutar juntos todos los puntajes del dominio entre las personas de entrenamiento es válido | Pregunta de Audrey |
 
 ---
 
 ## 1. Reglas para el agente (leer antes de escribir código)
 
 1. **El contrato está congelado.** No cambies nombres, firmas, columnas, tolerancias ni criterios. Si algo parece estar mal, no lo «arregles»: detenete y explicá el problema. Un cambio exige el acuerdo de Tomás, Audrey y Diego.
-2. **Leé primero el código real del paquete.** Antes de escribir, abrí `anima_spine/predictions.py` (versión 2.2) y confirmá que existen, con estos nombres, `NIVELES`, `LINEAS_BASE`, `DOMINIOS`, `CAMPOS_INTERVALOS`, `CAMPOS_BARRIDO`, `ContratoError`, `exportar_intervalos`, `exportar_barrido`, `cobertura_promedio`, `verificar_intervalos` y `verificar_barrido`. Si alguno falta o tiene otra firma, detenete y avisá. No inventes un reemplazo.
+2. **Leé primero el código real del paquete.** Antes de escribir, abrí `anima_spine/predictions.py` (versión 2.2 o 2.2.1) y confirmá que existen, con estos nombres, `NIVELES`, `LINEAS_BASE`, `DOMINIOS`, `CAMPOS_INTERVALOS`, `CAMPOS_BARRIDO`, `ContratoError`, `exportar_intervalos`, `exportar_barrido`, `cobertura_promedio`, `verificar_intervalos` y `verificar_barrido`. Si alguno falta o tiene otra firma, detenete y avisá. No inventes un reemplazo.
 3. **Solo tocás `anima_spine/calibracion.py` y sus tests.** `spine.py`, `predictions.py`, `compare.py` y `power_gradiente.py` son de Diego: no los modifiques. Tampoco cambies la versión del paquete ni `cohorte_anima.csv` (su huella SHA-256 es fija).
 4. **No agregues `import anima_spine.calibracion` en `anima_spine/__init__.py`.** pandas y scipy se importan solo dentro de `calibracion.py`, y el resto del paquete usa solo numpy. Los módulos importan la capa así: `from anima_spine.calibracion import ...`.
 5. **Fallá en voz alta.** Ante cualquier violación del contrato, levantá `ContratoError`. Nunca corrijas, imputes, recortes, redondees ni descartes filas en silencio.
@@ -56,7 +71,7 @@ módulo (Rostro / Voz / Temperamento)
 - `coverage_report`
 - `control_permutacion`
 
-`ContratoError` **no** se define en este archivo: se importa del paquete.
+`ContratoError` **no** se define en este archivo: se importa de `predictions`.
 
 ```python
 # anima_spine/calibracion.py (encabezado)
@@ -66,8 +81,10 @@ import pandas as pd
 from scipy import stats
 
 from anima_spine import predictions as P
-from anima_spine import ContratoError   # definida en predictions.py, subclase de ValueError
+from anima_spine.predictions import ContratoError   # subclase de ValueError
 ```
+
+Se importa de `predictions` y no de `anima_spine` porque el `__init__.py` de la 2.2 todavía no la exporta. Cuando Diego la exporte, las dos rutas apuntan a la misma clase y este import sigue siendo válido. No modifiques `__init__.py` para agregarla.
 
 ---
 
@@ -90,6 +107,8 @@ Una tabla larga **por dominio**, en un pandas DataFrame, con **una fila por `ind
 | `edad` | no | numérico | Reservado. No se usa en esta versión |
 
 Cualquier otra columna (por ejemplo `origen` o `muestra_1000g`) se ignora: no se valida ni se copia a la salida.
+
+**Tipo de entrada.** `df` (y `df_perm` en `control_permutacion`) tiene que ser un `pandas.DataFrame`. Si no lo es, la capa levanta `ContratoError("df: se esperaba pandas.DataFrame, se recibió <tipo>")` antes de cualquier otro chequeo. La capa no convierte otros formatos: si un módulo tiene, por ejemplo, un dict de arreglos, lo convierte él antes de llamarla.
 
 ---
 
@@ -217,13 +236,33 @@ def crps_normal(y, mu, sigma):               # promedio sobre las personas de pr
 
 `ancho_oraculo` y `crps_oraculo` son los **únicos** NaN permitidos en la salida.
 
-### 7.6 `control_permutacion(df_perm, cal_base) -> pd.DataFrame`
+**Qué es y qué no es el CRPS.** La cobertura se mide sobre los intervalos conformales `mu ± q̂·sigma`. El CRPS se calcula sobre la normal paramétrica N(`mu`, `sigma`), que es otra distribución predictiva y no depende de la calibración. El CRPS se reporta como **diagnóstico, sin umbral**, y **no forma parte de la condición de la hipótesis** (decisión del grupo del 12/11/2026). No lo uses como criterio de aprobación dentro de la capa ni en sus tests.
+
+### 7.6 `control_permutacion(df_perm, cal_base) -> dict[str, pd.DataFrame]` (cambio v5.1)
 
 - `df_perm` cumple el mismo contrato, con `mu` y `sigma` de un modelo ajustado con el puntaje poligénico permutado. Sus columnas de línea base son las originales: lo garantiza el módulo.
+- A la capa no le importa cómo se hizo la permutación. Por ejemplo, permutar juntos todos los puntajes del dominio entre las personas de entrenamiento es válido: Rostro permuta sus 28 y Temperamento sus 5.
 - La función ajusta un calibrador nuevo en el modo del modelo sobre `df_perm` y predice `prueba`.
 - `ancho_base` sale de `cal_base.predict(df_perm)`, solo de `linea_base == "ancestria sexo edad"`.
-- Columnas: `rasgo, nivel, ancho_permutado, ancho_base, cociente, pasa`, con `cociente = ancho_permutado / ancho_base` y `pasa = 0.95 <= cociente <= 1.05`.
-- Es un diagnóstico para el informe, no un test.
+- Devuelve un diccionario con dos claves:
+
+| Clave | Una fila por | Columnas, en este orden |
+| --- | --- | --- |
+| `"por_rasgo"` | rasgo × nivel | `rasgo, nivel, ancho_permutado, ancho_base, cociente`. **Sin columna `pasa`** |
+| `"por_nivel"` | nivel | `nivel, n_rasgos, cociente_medio, pasa` |
+
+```python
+cociente = ancho_permutado / ancho_base                  # por rasgo y nivel
+cociente_medio = mean(cociente sobre los rasgos)         # promedio simple de los cocientes, por nivel
+pasa = 0.95 <= cociente_medio <= 1.05                    # 6 banderas, una por nivel
+```
+
+- `cociente_medio` es el **promedio simple** de los cocientes de todos los rasgos del nivel (en Rostro, las 28 componentes), con el mismo peso para cada uno. No es el cociente entre los anchos promedio. `n_rasgos` es la cantidad de rasgos promediados.
+- `"por_rasgo"` se devuelve siempre completa y va al informe, aunque no lleve bandera.
+
+- **Por qué la bandera va sobre el promedio:** el control de permutación es una afirmación sobre el dominio, no sobre un rasgo suelto. Con la bandera por celda, un modelo correcto marca al menos un «no pasa» en 2 de cada 5 corridas de Voz (48 celdas). Sobre el promedio de rasgos, el desvío baja a alrededor de 0,008 y la ventana de ±0,05 queda a más de seis desvíos.
+- El cociente se centra en alrededor de 0,997 y no en 1, porque los dos modelos estiman distinta cantidad de parámetros. Es esperable, no un error, y no se corrige.
+- Es un diagnóstico para el informe, no un test de la capa.
 
 ### 7.7 Uso desde un módulo
 
@@ -312,7 +351,9 @@ Cada test lleva su id en el nombre, por ejemplo `test_T07_n_efectivo`.
 | T9 | Columnas de salida | `list(predict(df).columns) == list(P.CAMPOS_INTERVALOS)` y `list(contar(...).columns) == list(P.CAMPOS_BARRIDO)`. Con los ids reales de la cohorte, la salida pasa `P.verificar_intervalos` y `P.verificar_barrido`. Si la cohorte no está disponible, esta parte se marca como `skip` y no como error |
 | T10 | Filas de entrenamiento | Agregar o quitar filas de `entrenamiento` no cambia `qhat_` ni `predict` |
 | T11 | Cruce con el paquete | `coverage_report(...)["cobertura"].cobertura` es exactamente igual a `dentro / n` del barrido de la réplica 0, y `P.cobertura_promedio` sobre ese barrido de una sola réplica da el mismo valor |
-| T12 | Error compartido | Los errores de la capa son instancias de `anima_spine.ContratoError` y también se pueden capturar como `ValueError` |
+| T12 | Error compartido | Los errores de la capa son instancias de `anima_spine.predictions.ContratoError` (la misma clase que levantan los validadores del paquete) y también se pueden capturar como `ValueError`. Si `anima_spine` exporta `ContratoError`, verificar además que `anima_spine.ContratoError is anima_spine.predictions.ContratoError` |
+| T13 | Tipo de entrada (v5.1) | Pasar un dict o una lista en lugar de un DataFrame levanta `ContratoError` con el campo `df`, en `fit`, `predict`, `contar`, `coverage_report` y `control_permutacion` |
+| T14 | Forma de `control_permutacion` (v5.1) | Con datos sintéticos, devuelve las claves `"por_rasgo"` y `"por_nivel"` con las columnas exactas de la sección 7.6. `"por_rasgo"` no tiene `pasa`, `"por_nivel"` tiene una fila por nivel, y `cociente_medio` es el promedio simple de `cociente` |
 
 **Antes de escribir T9 y T11**, leé las firmas reales de `verificar_intervalos`, `verificar_barrido` y `cobertura_promedio` en `predictions.py`. Según Diego, `verificar_barrido(barrido, intervalos, predicciones, ids, dominio)` y `cobertura_promedio(barrido)` devuelve `{rasgo: {nivel: promedio}}`. Si no coinciden, detenete y avisá.
 
@@ -332,21 +373,21 @@ Con esos datos corré los criterios de T2 y T3. La adaptación vive en los tests
 
 **Fase v0 (prioridad máxima)**
 
-1. Leer `predictions.py` 2.2 y verificar los nombres de la regla 2 de la sección 1.
+1. Leer `predictions.py` 2.2 o 2.2.1 y verificar los nombres de la regla 2 de la sección 1.
 2. Escribir la fixture `tabla_sintetica` y T1.
-3. Implementar `_validar` (V1 a V15) con T5 y T12.
+3. Implementar el chequeo de tipo de entrada y `_validar` (V1 a V15), con T5, T12 y T13.
 4. Implementar `ConformalCalibrator.__init__`, `fit` y `qhat_`, con T1 y T7.
 5. Implementar `predict`, con T4, T9 (columnas) y T10.
 6. Implementar `contar`, con T9 (columnas) y T6.
 7. Implementar T2 y T8.
 
-La v0 está terminada cuando pasan T1, T2, T4, T5, T6, T7, T8, T9, T10 y T12.
+La v0 está terminada cuando pasan T1, T2, T4, T5, T6, T7, T8, T9, T10, T12 y T13.
 
 **Fase v1**
 
 8. `coverage_report`, con T11.
 9. T3a y T3b.
-10. `control_permutacion`.
+10. `control_permutacion`, con la salida v5.1 de la sección 7.6 y T14.
 11. T9 completo contra la cohorte real.
 
 La v1 está terminada cuando pasan todos los tests y también los 26 tests existentes del paquete. Con la v1, la capa entra en `anima_spine` 2.3, que publica Diego.
